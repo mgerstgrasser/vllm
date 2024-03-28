@@ -6,7 +6,8 @@ from vllm._C import cache_ops
 from vllm._C import ops
 from vllm.model_executor.input_metadata import InputMetadata
 from vllm.model_executor.layers.attention.ops.prefix_prefill import (
-    context_attention_fwd)
+    context_attention_fwd,
+)
 
 # Should be the same as PARTITION_SIZE in `paged_attention_v2_launcher`.
 _PARTITION_SIZE = 512
@@ -16,7 +17,7 @@ class PagedAttentionImpl:
 
     @staticmethod
     def get_supported_head_sizes() -> List[int]:
-        return [64, 80, 96, 112, 128, 256]
+        return [16, 32, 48, 64, 80, 96, 112, 128, 256]
 
     @staticmethod
     def reshape_and_cache(
@@ -50,8 +51,8 @@ class PagedAttentionImpl:
         block_size = value_cache.shape[3]
         num_seqs, num_heads, head_size = query.shape
         max_num_partitions = (
-            (input_metadata.max_context_len + _PARTITION_SIZE - 1) //
-            _PARTITION_SIZE)
+            input_metadata.max_context_len + _PARTITION_SIZE - 1
+        ) // _PARTITION_SIZE
         # NOTE(woosuk): We use a simple heuristic to decide whether to use
         # PagedAttention V1 or V2. If the number of partitions is 1, we use
         # V1 to avoid the overhead of reduction. Also, if the number of
@@ -60,7 +61,8 @@ class PagedAttentionImpl:
         # TODO(woosuk): Tune this heuristic.
         # For context len > 8192, use V2 kernel to avoid shared memory shortage.
         use_v1 = input_metadata.max_context_len <= 8192 and (
-            max_num_partitions == 1 or num_seqs * num_heads > 512)
+            max_num_partitions == 1 or num_seqs * num_heads > 512
+        )
         if use_v1:
             # Run PagedAttention V1.
             ops.paged_attention_v1(
