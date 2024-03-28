@@ -96,17 +96,19 @@ class LLMEngine:
         self.log_stats = log_stats
         self._verify_args()
 
-        self._init_tokenizer()
-        self.detokenizer = Detokenizer(self.tokenizer)
+        if self.model_config.enable_tokenizer:
+            self.detokenizer = Detokenizer(self.tokenizer)
+            self._init_tokenizer()
         self.seq_counter = Counter()
 
         self.model_executor = executor_class(model_config, cache_config,
                                              parallel_config, scheduler_config,
                                              device_config, lora_config)
 
-        # Ping the tokenizer to ensure liveness if it runs in a
-        # different process.
-        self.tokenizer.ping()
+        if self.model_config.enable_tokenizer:
+            # Ping the tokenizer to ensure liveness if it runs in a
+            # different process.
+            self.tokenizer.ping()
 
         # Create the scheduler.
         # NOTE: the cache_config here have been updated with the numbers of
@@ -274,8 +276,9 @@ class LLMEngine:
         # Create the sequences.
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
-        eos_token_id = self.tokenizer.get_lora_tokenizer(
-            lora_request).eos_token_id
+        eos_token_id = None
+        if self.model_config.enable_tokenizer:
+            eos_token_id = self.tokenizer.get_lora_tokenizer(lora_request).eos_token_id
         seq = Sequence(seq_id, prompt, prompt_token_ids, block_size,
                        eos_token_id, lora_request)
 
