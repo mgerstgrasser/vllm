@@ -123,6 +123,7 @@ class SamplingParams:
     ) -> None:
         self.n = n
         self.best_of = best_of if best_of is not None else n
+        self.detokenize = detokenize
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty
         self.repetition_penalty = repetition_penalty
@@ -163,7 +164,6 @@ class SamplingParams:
                 self.top_k = -1
                 self.min_p = 0.0
                 self._verify_greedy_sampling()
-        self.detokenize = detokenize
 
     def _verify_args(self) -> None:
         if self.n < 1:
@@ -207,7 +207,7 @@ class SamplingParams:
             raise ValueError(
                 f"prompt_logprobs must be non-negative, got " f"{self.prompt_logprobs}."
             )
-        if self.stop is not None and self.detokenize is False:
+        if len(self.stop) > 0 and self.detokenize is False:
             raise ValueError(
                 "stop strings are only supported when detokenize is True. "
                 "Set detokenize=True to use stop."
