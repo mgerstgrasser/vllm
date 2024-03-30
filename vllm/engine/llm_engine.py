@@ -5,8 +5,14 @@ from transformers import PreTrainedTokenizer
 
 import vllm
 from vllm.lora.request import LoRARequest
-from vllm.config import (CacheConfig, DeviceConfig, ModelConfig,
-                         ParallelConfig, SchedulerConfig, LoRAConfig)
+from vllm.config import (
+    CacheConfig,
+    DeviceConfig,
+    ModelConfig,
+    ParallelConfig,
+    SchedulerConfig,
+    LoRAConfig,
+)
 from vllm.core.scheduler import Scheduler, SchedulerOutputs
 from vllm.engine.arg_utils import EngineArgs
 from vllm.executor.executor_base import ExecutorBase
@@ -15,10 +21,18 @@ from vllm.engine.ray_utils import initialize_ray_cluster
 from vllm.logger import init_logger
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import SamplingParams
-from vllm.sequence import (SamplerOutput, Sequence, SequenceGroup,
-                           SequenceGroupOutput, SequenceOutput, SequenceStatus)
-from vllm.transformers_utils.tokenizer_group import (BaseTokenizerGroup,
-                                                     get_tokenizer_group)
+from vllm.sequence import (
+    SamplerOutput,
+    Sequence,
+    SequenceGroup,
+    SequenceGroupOutput,
+    SequenceOutput,
+    SequenceStatus,
+)
+from vllm.transformers_utils.tokenizer_group import (
+    BaseTokenizerGroup,
+    get_tokenizer_group,
+)
 from vllm.transformers_utils.detokenizer import Detokenizer
 from vllm.utils import Counter
 
@@ -84,7 +98,8 @@ class LLMEngine:
             f"enforce_eager={model_config.enforce_eager}, "
             f"kv_cache_dtype={cache_config.cache_dtype}, "
             f"device_config={device_config.device}, "
-            f"seed={model_config.seed})")
+            f"seed={model_config.seed})"
+        )
         # TODO(woosuk): Print more configs in debug mode.
 
         self.model_config = model_config
@@ -100,9 +115,14 @@ class LLMEngine:
         self.detokenizer = Detokenizer(self.tokenizer)
         self.seq_counter = Counter()
 
-        self.model_executor = executor_class(model_config, cache_config,
-                                             parallel_config, scheduler_config,
-                                             device_config, lora_config)
+        self.model_executor = executor_class(
+            model_config,
+            cache_config,
+            parallel_config,
+            scheduler_config,
+            device_config,
+            lora_config,
+        )
 
         # Ping the tokenizer to ensure liveness if it runs in a
         # different process.
@@ -117,7 +137,8 @@ class LLMEngine:
         if self.log_stats:
             self.stat_logger = StatLogger(
                 local_interval=_LOCAL_LOGGING_INTERVAL_SEC,
-                labels=dict(model_name=model_config.model))
+                labels=dict(model_name=model_config.model),
+            )
             self.stat_logger.info("cache_config", self.cache_config)
 
     @classmethod
@@ -131,21 +152,27 @@ class LLMEngine:
         # Initialize the cluster and specify the executor class.
         if device_config.device_type == "neuron":
             from vllm.executor.neuron_executor import NeuronExecutor
+
             executor_class = NeuronExecutor
         elif parallel_config.worker_use_ray:
             initialize_ray_cluster(parallel_config)
             from vllm.executor.ray_gpu_executor import RayGPUExecutor
+
             executor_class = RayGPUExecutor
         else:
-            assert parallel_config.world_size == 1, (
-                "Ray is required if parallel_config.world_size > 1.")
+            assert (
+                parallel_config.world_size == 1
+            ), "Ray is required if parallel_config.world_size > 1."
             from vllm.executor.gpu_executor import GPUExecutor
+
             executor_class = GPUExecutor
 
         # Create the LLM engine.
-        engine = cls(*engine_configs,
-                     executor_class=executor_class,
-                     log_stats=not engine_args.disable_log_stats)
+        engine = cls(
+            *engine_configs,
+            executor_class=executor_class,
+            log_stats=not engine_args.disable_log_stats,
+        )
         return engine
 
     def __reduce__(self):
@@ -156,8 +183,7 @@ class LLMEngine:
     def get_tokenizer(self) -> "PreTrainedTokenizer":
         return self.tokenizer.get_lora_tokenizer(None)
 
-    def get_tokenizer_for_seq(self,
-                              sequence: Sequence) -> "PreTrainedTokenizer":
+    def get_tokenizer_for_seq(self, sequence: Sequence) -> "PreTrainedTokenizer":
         return self.tokenizer.get_lora_tokenizer(sequence.lora_request)
 
     def _init_tokenizer(self, **tokenizer_init_kwargs):
@@ -168,11 +194,13 @@ class LLMEngine:
             max_input_length=None,
             tokenizer_mode=self.model_config.tokenizer_mode,
             trust_remote_code=self.model_config.trust_remote_code,
-            revision=self.model_config.tokenizer_revision)
+            revision=self.model_config.tokenizer_revision,
+        )
         init_kwargs.update(tokenizer_init_kwargs)
 
         self.tokenizer: BaseTokenizerGroup = get_tokenizer_group(
-            self.parallel_config.tokenizer_pool_config, **init_kwargs)
+            self.parallel_config.tokenizer_pool_config, **init_kwargs
+        )
 
         if len(self.get_tokenizer()) != self.model_config.get_vocab_size():
             logger.warning(
@@ -180,15 +208,15 @@ class LLMEngine:
                 f" does not match the model's vocabulary size "
                 f"{self.model_config.get_vocab_size()}. This might "
                 f"cause an error in decoding. Please change config.json "
-                "to match the tokenizer's vocabulary size.")
+                "to match the tokenizer's vocabulary size."
+            )
 
     def _verify_args(self) -> None:
         self.model_config.verify_with_parallel_config(self.parallel_config)
         self.cache_config.verify_with_parallel_config(self.parallel_config)
         if self.lora_config:
             self.lora_config.verify_with_model_config(self.model_config)
-            self.lora_config.verify_with_scheduler_config(
-                self.scheduler_config)
+            self.lora_config.verify_with_scheduler_config(self.scheduler_config)
 
     def encode_request(
         self,
@@ -199,9 +227,9 @@ class LLMEngine:
     ):
         if prompt_token_ids is None:
             assert prompt is not None
-            prompt_token_ids = self.tokenizer.encode(request_id=request_id,
-                                                     prompt=prompt,
-                                                     lora_request=lora_request)
+            prompt_token_ids = self.tokenizer.encode(
+                request_id=request_id, prompt=prompt, lora_request=lora_request
+            )
         return prompt_token_ids
 
     def add_request(
@@ -254,38 +282,40 @@ class LLMEngine:
             >>> ...
         """
         if lora_request is not None and not self.lora_config:
-            raise ValueError(f"Got lora_request {lora_request} but LoRA is "
-                             "not enabled!")
+            raise ValueError(
+                f"Got lora_request {lora_request} but LoRA is " "not enabled!"
+            )
         max_logprobs = self.get_model_config().max_logprobs
-        if (sampling_params.logprobs
-                and sampling_params.logprobs > max_logprobs) or (
-                    sampling_params.prompt_logprobs
-                    and sampling_params.prompt_logprobs > max_logprobs):
-            raise ValueError(f"Cannot request more than "
-                             f"{max_logprobs} logprobs.")
+        if (sampling_params.logprobs and sampling_params.logprobs > max_logprobs) or (
+            sampling_params.prompt_logprobs
+            and sampling_params.prompt_logprobs > max_logprobs
+        ):
+            raise ValueError(f"Cannot request more than " f"{max_logprobs} logprobs.")
         if arrival_time is None:
             arrival_time = time.time()
         prompt_token_ids = self.encode_request(
             request_id=request_id,
             prompt=prompt,
             prompt_token_ids=prompt_token_ids,
-            lora_request=lora_request)
+            lora_request=lora_request,
+        )
 
         # Create the sequences.
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
-        eos_token_id = self.tokenizer.get_lora_tokenizer(
-            lora_request).eos_token_id
-        seq = Sequence(seq_id, prompt, prompt_token_ids, block_size,
-                       eos_token_id, lora_request)
+        eos_token_id = self.tokenizer.get_lora_tokenizer(lora_request).eos_token_id
+        seq = Sequence(
+            seq_id, prompt, prompt_token_ids, block_size, eos_token_id, lora_request
+        )
 
         # Defensive copy of SamplingParams, which are used by the sampler,
         # this doesn't deep-copy LogitsProcessor objects
         sampling_params = sampling_params.clone()
 
         # Create the sequence group.
-        seq_group = SequenceGroup(request_id, [seq], sampling_params,
-                                  arrival_time, lora_request)
+        seq_group = SequenceGroup(
+            request_id, [seq], sampling_params, arrival_time, lora_request
+        )
 
         # Add the sequence group to the scheduler.
         self.scheduler.add_seq_group(seq_group)
@@ -334,12 +364,13 @@ class LLMEngine:
             return True
 
         current_worst_score = current_worst_seq.get_beam_search_score(
-            length_penalty=length_penalty,
-            eos_token_id=current_worst_seq.eos_token_id)
+            length_penalty=length_penalty, eos_token_id=current_worst_seq.eos_token_id
+        )
         if early_stopping is False:
             highest_attainable_score = best_running_seq.get_beam_search_score(
                 length_penalty=length_penalty,
-                eos_token_id=best_running_seq.eos_token_id)
+                eos_token_id=best_running_seq.eos_token_id,
+            )
         else:
             assert early_stopping == "never"
             if length_penalty > 0.0:
@@ -347,42 +378,39 @@ class LLMEngine:
                 # sequences. The highest attainable score calculation is
                 # based on the longest possible sequence length in this case.
                 max_possible_length = max(
-                    best_running_seq.get_prompt_len() +
-                    sampling_params.max_tokens,
-                    self.scheduler_config.max_model_len)
-                highest_attainable_score = (
-                    best_running_seq.get_beam_search_score(
-                        length_penalty=length_penalty,
-                        eos_token_id=best_running_seq.eos_token_id,
-                        seq_len=max_possible_length))
+                    best_running_seq.get_prompt_len() + sampling_params.max_tokens,
+                    self.scheduler_config.max_model_len,
+                )
+                highest_attainable_score = best_running_seq.get_beam_search_score(
+                    length_penalty=length_penalty,
+                    eos_token_id=best_running_seq.eos_token_id,
+                    seq_len=max_possible_length,
+                )
             else:
                 # Otherwise, beam search will prefer shorter sequences. The
                 # highest attainable score calculation is based on the current
                 # sequence length.
-                highest_attainable_score = (
-                    best_running_seq.get_beam_search_score(
-                        length_penalty=length_penalty,
-                        eos_token_id=best_running_seq.eos_token_id))
+                highest_attainable_score = best_running_seq.get_beam_search_score(
+                    length_penalty=length_penalty,
+                    eos_token_id=best_running_seq.eos_token_id,
+                )
         return current_worst_score >= highest_attainable_score
 
-    def _process_sequence_group_outputs(self, seq_group: SequenceGroup,
-                                        outputs: SequenceGroupOutput) -> None:
+    def _process_sequence_group_outputs(
+        self, seq_group: SequenceGroup, outputs: SequenceGroupOutput
+    ) -> None:
 
         # Process prompt logprobs
         prompt_logprobs = outputs.prompt_logprobs
-        if prompt_logprobs is not None:
-            self.detokenizer.decode_prompt_logprobs_inplace(
-                seq_group, prompt_logprobs)
+        if prompt_logprobs is not None and seq_group.sampling_params.detokenize:
+            self.detokenizer.decode_prompt_logprobs_inplace(seq_group, prompt_logprobs)
             seq_group.prompt_logprobs = prompt_logprobs
 
         # Process samples
         samples = outputs.samples
         parent_seqs = seq_group.get_seqs(status=SequenceStatus.RUNNING)
         existing_finished_seqs = seq_group.get_finished_seqs()
-        parent_child_dict = {
-            parent_seq.seq_id: []
-            for parent_seq in parent_seqs
-        }
+        parent_child_dict = {parent_seq.seq_id: [] for parent_seq in parent_seqs}
         for sample in samples:
             parent_child_dict[sample.parent_seq_id].append(sample)
         # List of (child, parent)
@@ -390,8 +418,7 @@ class LLMEngine:
 
         # Process the child samples for each parent sequence
         for parent in parent_seqs:
-            child_samples: List[SequenceOutput] = parent_child_dict[
-                parent.seq_id]
+            child_samples: List[SequenceOutput] = parent_child_dict[parent.seq_id]
             if len(child_samples) == 0:
                 # This parent sequence has no children samples. Remove
                 # the parent sequence from the sequence group since it will
@@ -404,20 +431,20 @@ class LLMEngine:
             for child_sample in child_samples[:-1]:
                 new_child_seq_id = next(self.seq_counter)
                 child = parent.fork(new_child_seq_id)
-                child.append_token_id(child_sample.output_token,
-                                      child_sample.logprobs)
+                child.append_token_id(child_sample.output_token, child_sample.logprobs)
                 child_seqs.append((child, parent))
             # Continue the parent sequence for the last child sample.
             # We reuse the parent sequence here to reduce redundant memory
             # copies, especially when using non-beam search sampling methods.
             last_child_sample = child_samples[-1]
-            parent.append_token_id(last_child_sample.output_token,
-                                   last_child_sample.logprobs)
+            parent.append_token_id(
+                last_child_sample.output_token, last_child_sample.logprobs
+            )
             child_seqs.append((parent, parent))
 
         for seq, _ in child_seqs:
-            self.detokenizer.decode_sequence_inplace(seq,
-                                                     seq_group.sampling_params)
+            if seq_group.sampling_params.detokenize:
+                self.detokenizer.decode_sequence_inplace(seq, seq_group.sampling_params)
             self._check_stop(seq, seq_group.sampling_params)
 
         # Non-beam search case
@@ -449,15 +476,18 @@ class LLMEngine:
         # Select the newly finished sequences with the highest scores
         # to replace existing finished sequences.
         # Tuple of (seq, parent, is_new)
-        existing_finished_seqs = [(seq, None, False)
-                                  for seq in existing_finished_seqs]
-        new_finished_seqs = [(seq, parent, True) for seq, parent in child_seqs
-                             if seq.is_finished()]
+        existing_finished_seqs = [(seq, None, False) for seq in existing_finished_seqs]
+        new_finished_seqs = [
+            (seq, parent, True) for seq, parent in child_seqs if seq.is_finished()
+        ]
         all_finished_seqs = existing_finished_seqs + new_finished_seqs
         # Sort the finished sequences by their scores.
-        all_finished_seqs.sort(key=lambda x: x[0].get_beam_search_score(
-            length_penalty=length_penalty, eos_token_id=x[0].eos_token_id),
-                               reverse=True)
+        all_finished_seqs.sort(
+            key=lambda x: x[0].get_beam_search_score(
+                length_penalty=length_penalty, eos_token_id=x[0].eos_token_id
+            ),
+            reverse=True,
+        )
         for seq, parent, is_new in all_finished_seqs[:beam_width]:
             if is_new:
                 # A newly generated child sequence finishes and has a high
@@ -479,12 +509,16 @@ class LLMEngine:
         # select the top beam_width sequences from the running
         # sequences for the next iteration to continue the beam
         # search.
-        running_child_seqs = [(seq, parent) for seq, parent in child_seqs
-                              if not seq.is_finished()]
+        running_child_seqs = [
+            (seq, parent) for seq, parent in child_seqs if not seq.is_finished()
+        ]
         # Sort the running sequences by their scores.
-        running_child_seqs.sort(key=lambda x: x[0].get_beam_search_score(
-            length_penalty=length_penalty, eos_token_id=x[0].eos_token_id),
-                                reverse=True)
+        running_child_seqs.sort(
+            key=lambda x: x[0].get_beam_search_score(
+                length_penalty=length_penalty, eos_token_id=x[0].eos_token_id
+            ),
+            reverse=True,
+        )
 
         # Check if we can stop the beam search.
         if len(running_child_seqs) == 0:
@@ -499,7 +533,10 @@ class LLMEngine:
             current_worst_seq = all_finished_seqs[beam_width - 1][0]
             stop_beam_search = self._check_beam_search_early_stopping(
                 seq_group.sampling_params.early_stopping,
-                seq_group.sampling_params, best_running_seq, current_worst_seq)
+                seq_group.sampling_params,
+                best_running_seq,
+                current_worst_seq,
+            )
 
         if stop_beam_search:
             # Stop the beam search and remove all the running sequences from
@@ -539,8 +576,8 @@ class LLMEngine:
                 self.scheduler.free_seq(seq)
 
     def _process_model_outputs(
-            self, output: SamplerOutput,
-            scheduler_outputs: SchedulerOutputs) -> List[RequestOutput]:
+        self, output: SamplerOutput, scheduler_outputs: SchedulerOutputs
+    ) -> List[RequestOutput]:
         now = time.time()
         # Update the scheduled sequence groups with the model outputs.
         scheduled_seq_groups = scheduler_outputs.scheduled_seq_groups
@@ -627,9 +664,11 @@ class LLMEngine:
 
         if not scheduler_outputs.is_empty():
             output = self.model_executor.execute_model(
-                seq_group_metadata_list, scheduler_outputs.blocks_to_swap_in,
+                seq_group_metadata_list,
+                scheduler_outputs.blocks_to_swap_in,
                 scheduler_outputs.blocks_to_swap_out,
-                scheduler_outputs.blocks_to_copy)
+                scheduler_outputs.blocks_to_copy,
+            )
         else:
             output = []
 
@@ -640,8 +679,7 @@ class LLMEngine:
         if self.log_stats:
             self.stat_logger.log(self._get_stats(scheduler_outputs=None))
 
-    def _get_stats(self,
-                   scheduler_outputs: Optional[SchedulerOutputs]) -> Stats:
+    def _get_stats(self, scheduler_outputs: Optional[SchedulerOutputs]) -> Stats:
         """Get Stats to be Logged to Prometheus."""
         now = time.time()
 
@@ -651,10 +689,9 @@ class LLMEngine:
         gpu_cache_usage = 1.0 - (num_free_gpu / num_total_gpu)
 
         num_total_cpu = self.cache_config.num_cpu_blocks
-        cpu_cache_usage = 0.
+        cpu_cache_usage = 0.0
         if num_total_cpu > 0:
-            num_free_cpu = self.scheduler.block_manager.get_num_free_cpu_blocks(
-            )
+            num_free_cpu = self.scheduler.block_manager.get_num_free_cpu_blocks()
             cpu_cache_usage = 1.0 - (num_free_cpu / num_total_cpu)
 
         # Scheduler State
@@ -675,10 +712,12 @@ class LLMEngine:
             if prompt_run:
                 num_prompt_tokens = sum(
                     len(seq_group.prompt_token_ids)
-                    for seq_group in scheduler_outputs.scheduled_seq_groups)
+                    for seq_group in scheduler_outputs.scheduled_seq_groups
+                )
                 num_generation_tokens = sum(
                     seq_group.num_seqs()
-                    for seq_group in scheduler_outputs.scheduled_seq_groups)
+                    for seq_group in scheduler_outputs.scheduled_seq_groups
+                )
             else:
                 num_generation_tokens = scheduler_outputs.num_batched_tokens
 
@@ -690,8 +729,7 @@ class LLMEngine:
                 time_last_iters.append(seq_group.get_last_latency(now))
                 # Time since arrival for all finished requests.
                 if seq_group.is_finished():
-                    time_e2e_requests.append(now -
-                                             seq_group.metrics.arrival_time)
+                    time_e2e_requests.append(now - seq_group.metrics.arrival_time)
 
             time_to_first_tokens = time_last_iters if prompt_run else []
             time_per_output_tokens = [] if prompt_run else time_last_iters
@@ -710,17 +748,19 @@ class LLMEngine:
             time_e2e_requests=time_e2e_requests,
         )
 
-    def _check_stop(self, seq: Sequence,
-                    sampling_params: SamplingParams) -> None:
+    def _check_stop(self, seq: Sequence, sampling_params: SamplingParams) -> None:
         """Stop the finished sequences."""
-        for stop_str in sampling_params.stop:
-            if seq.output_text.endswith(stop_str):
-                self._finalize_sequence(seq, sampling_params, stop_str)
-                seq.status = SequenceStatus.FINISHED_STOPPED
-                return
+        # Check for stop_str in the output text, only if detokenize is enabled.
+        if sampling_params.detokenize:
+            for stop_str in sampling_params.stop:
+                if seq.output_text.endswith(stop_str):
+                    self._finalize_sequence(seq, sampling_params, stop_str)
+                    seq.status = SequenceStatus.FINISHED_STOPPED
+                    return
         if seq.get_last_token_id() in sampling_params.stop_token_ids:
             stop_str = self.get_tokenizer_for_seq(seq).convert_ids_to_tokens(
-                seq.get_last_token_id())
+                seq.get_last_token_id()
+            )
             self._finalize_sequence(seq, sampling_params, stop_str)
             seq.status = SequenceStatus.FINISHED_STOPPED
             return
@@ -736,21 +776,23 @@ class LLMEngine:
             return
 
         # Check if the sequence has generated the EOS token.
-        if ((not sampling_params.ignore_eos)
-                and seq.get_last_token_id() == seq.eos_token_id):
+        if (
+            not sampling_params.ignore_eos
+        ) and seq.get_last_token_id() == seq.eos_token_id:
             seq.status = SequenceStatus.FINISHED_STOPPED
             return
 
-    def _finalize_sequence(self, seq: Sequence,
-                           sampling_params: SamplingParams,
-                           stop_string: str) -> None:
+    def _finalize_sequence(
+        self, seq: Sequence, sampling_params: SamplingParams, stop_string: str
+    ) -> None:
         if sampling_params.include_stop_str_in_output:
             return
 
-        if stop_string and seq.output_text.endswith(stop_string):
-            # Truncate the output text so that the stop string is
-            # not included in the output.
-            seq.output_text = seq.output_text[:-len(stop_string)]
+        if sampling_params.detokenize:
+            if stop_string and seq.output_text.endswith(stop_string):
+                # Truncate the output text so that the stop string is
+                # not included in the output.
+                seq.output_text = seq.output_text[: -len(stop_string)]
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
         return self.model_executor.add_lora(lora_request)
