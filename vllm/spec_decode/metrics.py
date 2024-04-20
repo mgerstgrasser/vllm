@@ -1,10 +1,11 @@
-import torch
-from dataclasses import dataclass
-from vllm.model_executor.layers.rejection_sampler import RejectionSampler
-from typing import Optional
-from vllm.utils import is_pin_memory_available
 import time
-from typing import Callable
+from dataclasses import dataclass
+from typing import Callable, Optional
+
+import torch
+
+from vllm.model_executor.layers.rejection_sampler import RejectionSampler
+from vllm.utils import is_pin_memory_available
 
 
 @dataclass
@@ -111,6 +112,7 @@ class AsyncMetricsCollector:
 
         Returns a CUDA event recording when the copy is complete.
         """
+        assert self._copy_stream is not None
         self._copy_stream.wait_stream(torch.cuda.current_stream())
 
         with torch.cuda.stream(self._copy_stream):
